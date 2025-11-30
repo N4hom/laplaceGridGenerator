@@ -45,7 +45,7 @@ private:
 	Matrix<double> _a1, _a2, _a3, _a4, _a5, _a6, _a7, _a8;
 
 	// Tolerance for convergence criterion
-	double _tol = 1e-11;   
+	double _tol = 1e-8;   
 
 
 
