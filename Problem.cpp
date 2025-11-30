@@ -2,27 +2,49 @@
 #include <math.h>
 #include <cmath>
 
+/*
+		i = 0, j = Jmax	      i = Imax, j = Jmax
+		+--------------------
+		|
+		|
+		|
+		|
+		|
+		+---------------------
+
+		i = 0, j=0			  i = Imax, j = 0
+*/
+
 
 Problem::Problem(unsigned int N, unsigned int M):
-_N(N),
+_N(N), // Number of internal nodes
 _M(M),
-_Imax(N + 1),
+_Imax(N + 1), // Max index over i <-> csi
 _Jmax(M + 1),
-_deltaCsi(_H/(N+1)),
-_deltaEta(_L/(M+1)),
-_x(N + 2 , M + 2),
-_y(N + 2 , M + 2),
-// _xPrev(_N+2,_M+2),
-// _yPrev(_N+2,_M+2),
-_alpha(0.0),
-_beta(0.0),
-_gamma(0.0)
+_deltaCsi(1.0/(_Imax)), // eta, csi space span [0,1]x[0,1] space
+_deltaEta(1.0/(_Jmax)),
+_deltaX(_L/_Imax),
+_deltaY(_H/_Jmax),
+_x(_Imax + 1, _Jmax + 1),
+_y(_Imax + 1, _Jmax + 1),
+_alpha(_Imax - 1, _Jmax - 1, 0.0),
+_beta (_Imax - 1, _Jmax - 1, 0.0),
+_gamma(_Imax - 1, _Jmax - 1, 0.0),
+_d    (_Imax - 1, _Jmax - 1, 0.0),
+_a1   (_Imax - 1, _Jmax - 1, 0.0),
+_a2   (_Imax - 1, _Jmax - 1, 0.0),
+_a3   (_Imax - 1, _Jmax - 1, 0.0),
+_a4   (_Imax - 1, _Jmax - 1, 0.0),
+_a5   (_Imax - 1, _Jmax - 1, 0.0),
+_a6   (_Imax - 1, _Jmax - 1, 0.0),
+_a7   (_Imax - 1, _Jmax - 1, 0.0),
+_a8   (_Imax - 1, _Jmax - 1, 0.0)
 {
 	std::cout << "Problem parameters " << std::endl;
-	std::cout << "_deltaEta = " << _deltaEta << std::endl;
-	std::cout << "_deltaCsi = " << _deltaCsi << std::endl;
-	std::cout << "Number of nodes along csi : " << N << std::endl;
-	std::cout << "Number of nodes along eta : " << M << std::endl;
+	std::cout << "deltaEta = " << _deltaEta << std::endl;
+	std::cout << "deltaCsi = " << _deltaCsi << std::endl;
+	std::cout << "Number of internal nodes along csi : " << N << std::endl;
+	std::cout << "Number of internal nodes along eta : " << M << std::endl;
 }
 
 Problem::~Problem()
@@ -34,6 +56,25 @@ double pow2(double f)
 	return f*f;
 }
 
+// Initialize with no bump
+// void Problem::initialize()
+// {
+//     // Simple uniform rectangle in physical space
+//     for (unsigned int i = 0; i <= _Imax; ++i)
+//     {
+//         double xI = i * _deltaX;  // with _deltaX = L / _Imax
+
+//         for (unsigned int j = 0; j <= _Jmax; ++j)
+//         {
+//             double yJ = j * _deltaY;  // with _deltaY = H / _Jmax
+
+//             _x(i,j) = xI;
+//             _y(i,j) = yJ;
+//         }
+//     }
+// }
+
+
 void Problem::initialize()
 {
 	// x and y are set to zero everywhere except on the boundary 
@@ -43,219 +84,531 @@ void Problem::initialize()
 
 	std::cout << "Initializing x " << std::endl;
 
-	_x.setColumn(_Jmax, _L);
+	// Set value of x at the left
+	_x.setRow(0, 0);
+
 	bool leadingEdge = true;
 	bool trailingEdge = true;
-		
-	for (unsigned int j = 1; j < _x.cols() - 1; ++j)
+	
+	// Along csi (i)
+	for (unsigned int i = 1; i < _Imax ; ++i)
 	{
+		// Step from one node to the other
+		double xI = i * _deltaX;
 
-		double etaj = j * _deltaEta;
-
-		_x(0,j) = _x(0,j-1) + _deltaEta;
-		_x(_Imax,j) = _x(_Imax,j-1) + _deltaEta;
-		
-		if (etaj > 2 && leadingEdge)
-		{
-
-			_x(0,j - 1) = 2;
-			_x(_Imax,j - 1) = 2;
-			leadingEdge = false;
-		}
-
-		if (etaj > 3 && trailingEdge)
-		{
-			_x(0,j - 1) = 3;
-			_x(_Imax,j - 1) = 3;
-			trailingEdge = false;
-		}
-		
-
-		for (unsigned int i = 1; i < _x.rows() - 1; ++i)
+		// bottom
+		_x(i,0)     = _x(i - 1, 0) + _deltaX;
+		// top
+		_x(i,_Jmax) = _x(i - 1,_Jmax) + _deltaX;
+				
+	}
+	
+	// Fill interior
+	for (unsigned int i = 1; i < _Imax; i++)
+	{
+		/* code */
+		for (unsigned int j = 1; j < _Jmax ; ++j)
 		{
 			//_x(i,j) = 0.0 ;
-			_x(i,j) = _x(i-1,j) ;
+			_x(i,j) = _x(i,j-1);
+		
 		}
 	}
-	_x.setColumn(0  ,  0);
+	
+	_x.setRow(_Imax, _L);
 
 	std::cout << "Initializing y " << std::endl;
-	
-	//- Applying boundary conditions at i = 0 and i = _Imax 
-	//  if eta location is between  2 and 3 apply sinusoidal functions
-	//  else set _y(0,j) to 0 and _y(_Imax,j) to _H
 
-	for (unsigned int j = 0; j < _y.cols() ; ++j)
+	// Apply boundary conditions at j = 0 (bottom) and j = _Jmax (top)
+	// If csi is between 2 and 3, use sinusoidal profile,
+	// otherwise bottom = 0, top = _H
+
+	for (unsigned int i = 0; i <= _Imax; ++i)
 	{
-		double etaj = j * _deltaEta;
+		double xI = i * _deltaX;
 
-		if (etaj > 2 && etaj < 3)
+	//	if (1<0)
+		if (xI > 2.0 && xI < 3.0)
 		{
-			_y(0,j) = 1 - 0.1*sin(M_PI *(_x(0,j) - 2));  // f' = -0.2*M_PI*cos(M_PI *(_x(0,j) - 2))
-			_y(_Imax,j) = 0.1*sin(M_PI *(_x(0,j) - 2));  // f' = 0.2*M_PI*cos(M_PI *(_x(0,j) - 2))
-
-			//_y(0,j) = 1 ; 
-			//_y(_Imax,j) = 0;
-
+			// Use x(i,0) / x(i,_Jmax) just like you used x(0,j) before
+			_y(i,0)      = 0.1 * std::sin(M_PI * (_x(i,0)      - 2.0));       // bottom bump
+			
+			_y(i,_Jmax)  = 1.0 - 0.1 * std::sin(M_PI * (_x(i,_Jmax) - 2.0)); // top bump
+			// _y(i,_Jmax)  = _H;
 		}
 		else
 		{
-			_y(0,j) = _H;
-			_y(_Imax,j) = 0;
+			_y(i,0)      = 0.0;   // flat bottom
+			_y(i,_Jmax)  = _H;    // flat top
+		}
+
+		// _y(i,0)      = 0.0;   // flat bottom
+		// _y(i,_Jmax)  = _H;    // flat top
+	}
+
+
+	// Fill interior nodes in j by linear interpolation between bottom and top
+	for (unsigned int i = 0; i <= _Imax; ++i)
+	{
+		for (unsigned int j = 1; j < _Jmax; ++j) // j = 1.._Jmax-1
+		{
+			double s = static_cast<double>(j) / static_cast<double>(_Jmax); // 0..1
+			_y(i,j) = (1.0 - s) * _y(i,0) + s * _y(i,_Jmax);
 		}
 	}
-
-
-	//- Apply boundary conditions at i = 0  and i = _Imax for y
-	for (unsigned int i = 1; i < _y.rows() - 1; ++i)
-	{
-		_y(i,0) = _y(i-1,0) - _deltaCsi;
-		_y(i,_Jmax) = _y(i-1,_Jmax) - _deltaCsi;
-
-	}
-
-	std::cout << "Initial x " << std::endl;
-	_x.print();
-	std::cout << "Initial y " << std::endl;
-	_y.print();
-
 }
 
 void Problem::solve()
 {
-	unsigned int iter = 0;
-	Matrix<double> xPrev(_N+2,_M+2, 0);
-	Matrix<double> yPrev(_N+2,_M+2, 0);
-	double errX;
-	double errY;
+    unsigned int iter = 0;
+    Matrix<double> xPrev(_Imax+1, _Jmax+1, 0.0);
+    Matrix<double> yPrev(_Imax+1, _Jmax+1, 0.0);
 
-	do
-	{	
+    double errX, errY;
 
-		double errMax_x = 0;
-		double errMax_y =  0;
+    do
+    {
+        // 1) update coefficients for this iteration
+        updateCoeff();
 
-		//- Sweep over rows for y
-		for (unsigned int i = 1; i < _N + 1; ++i)
-		{
-			for (unsigned int j = 1; j < _M + 1; ++j)
-			{
+        double errSumX = 0.0;
+        double errSumY = 0.0;
 
-				updateAlpha(i,j);
-				updateBeta(i,j);
-				updateGamma(i,j);
-				_a1 = _beta/2/_deltaCsi/_deltaEta/-2.0/(_alpha/pow2(_deltaCsi) + _gamma/pow2(_deltaEta));
-				_a2 = - _gamma/pow2(_deltaEta)/-2.0/(_alpha/pow2(_deltaCsi) + _gamma/pow2(_deltaEta));
-				_a4 = - _alpha/pow2(_deltaCsi)/-2.0/(_alpha/pow2(_deltaCsi) + _gamma/pow2(_deltaEta));
+        // 2) Gauss–Seidel for x on interior points
+        for (unsigned int i = 1; i < _Imax; ++i)
+        {
+            for (unsigned int j = 1; j < _Jmax; ++j)
+            {
+                unsigned int ii = i - 1;
+                unsigned int jj = j - 1;
 
-				_y(i,j) = _a1 * ( _y(i+1,j+1) - _y(i-1,j+1) - _y(i+1,j-1) + _y(i-1, j-1) ) + _a2 * (_y(i,j+1) + _y(i,j-1)) + _a4 * (_y(i+1,j) + _y(i-1,j));
+                double xOld = _x(i,j);
 
-				
-				errMax_y = max( std::abs(_y(i,j) - yPrev(i,j)) , errMax_y);
-				yPrev(i,j) = _y(i,j);
+                _x(i,j) =
+                      _a1(ii,jj) * _x(i+1,j)
+                    + _a2(ii,jj) * _x(i-1,j)
+                    + _a3(ii,jj) * _x(i+1,j+1)
+                    + _a4(ii,jj) * _x(i-1,j+1)
+                    + _a5(ii,jj) * _x(i+1,j-1)
+                    + _a6(ii,jj) * _x(i-1,j-1)
+                    + _a7(ii,jj) * _x(i,  j+1)
+                    + _a8(ii,jj) * _x(i,  j-1);
 
-			}
-		}
+                errSumX += std::abs(_x(i,j) - xOld);
+            }
+        }
 
-		//- Sweep over columns for x
-		for (unsigned int j = _M ; j > 0 ; --j)
-		{
-			for (unsigned int i = 1; i < _N + 1; ++i)
-			{
-				updateAlpha(i,j);
-				updateBeta(i,j);
-				updateGamma(i,j);
-				_a1 =  _beta/2/_deltaCsi/_deltaEta/-2.0/(_alpha/pow2(_deltaCsi) + _gamma/pow2(_deltaEta));
-				_a2 = -_gamma/pow2(_deltaEta)/-2.0/(_alpha/pow2(_deltaCsi) + _gamma/pow2(_deltaEta));
-				_a4 = -_alpha/pow2(_deltaCsi)/-2.0/(_alpha/pow2(_deltaCsi) + _gamma/pow2(_deltaEta));
+        // 3) Gauss–Seidel for y on interior points
+        for (unsigned int i = 1; i < _Imax; ++i)
+        {
+            for (unsigned int j = 1; j < _Jmax; ++j)
+            {
+                unsigned int ii = i - 1;
+                unsigned int jj = j - 1;
 
-				_x(i,j) = _a1 * ( _x(i+1,j+1) - _x(i-1,j+1) - _x(i+1,j-1) + _x(i-1, j-1) ) + _a2 * (_x(i,j+1) + _x(i,j-1)) + _a4 * (_x(i+1,j) + _x(i-1,j));
+                double yOld = _y(i,j);
 
-				double etaj = j * _deltaEta;
+                _y(i,j) =
+                      _a1(ii,jj) * _y(i+1,j)
+                    + _a2(ii,jj) * _y(i-1,j)
+                    + _a3(ii,jj) * _y(i+1,j+1)
+                    + _a4(ii,jj) * _y(i-1,j+1)
+                    + _a5(ii,jj) * _y(i+1,j-1)
+                    + _a6(ii,jj) * _y(i-1,j-1)
+                    + _a7(ii,jj) * _y(i,  j+1)
+                    + _a8(ii,jj) * _y(i,  j-1);
 
-				//double fprime_0 = -0.2*M_PI*sin(M_PI *(_x(0,j) - 2));
-				//double fprime_Imax = 0.2*M_PI*sin(M_PI *(_x(0,j) - 2));
+                errSumY += std::abs(_y(i,j) - yOld);
+            }
+        }
 
-				//Adjust boundary conditions for x
-				if (etaj > 2 && etaj < 3)
-				{
-					// Top
-					_x(1,j) = _x(0,j) - (-0.1*M_PI*cos(M_PI *(_x(0,j) - 2)))*(_y(1,j) - _y(0,j)) ;
+		enforceBC(BOTTOM);
+		enforceBC(TOP);
 
-					// Bottom
-					_x(_Imax-1,j) = _x(_Imax,j) + (0.1*M_PI*cos(M_PI *(_x(0,j) - 2)))*(_y(_Imax,j) - _y(_Imax-1,j)) ;
+        errX = errSumX;
+        errY = errSumY;
 
-				}
-				
+        std::cout << "-------------------------------------\n";
+        std::cout << "iter = " << iter  << "\n";
+        std::cout << "sum error for x : " << errX << "\n";
+        std::cout << "sum error for y : " << errY << "\n";
+        std::cout << "-------------------------------------\n";
 
-				errMax_x = max( std::abs(_x(i,j) - xPrev(i,j)) , errMax_x);
-				xPrev(i,j) = _x(i,j);
-			}
-		}
+        ++iter;
+        if (iter > 100000)
+        {
+            std::cout << "Not converged !!!!!!!!!!!!!!!!!!!!!!\n";
+            break;
+        }
 
-		errX = errMax_x;
-		errY = errMax_y;
+    } while (errX > _tol || errY > _tol);
+}
 
 
-		std::cout << "-------------------------------------" << std::endl;
-		std::cout << "iter = " << iter << std::endl;
-		std::cout << "max error for x : " << errX << std::endl;
-		std::cout << "max error for y : " << errY << std::endl;
-		std::cout << "-------------------------------------" << std::endl;
 
-		++iter;
+void Problem::updateCoeff()
+{
+    const double eps = 0.0;
 
-		if (iter > 100000)
-		{
-			std::cout << "Not converged !!!!!!!!!!!!!!!!!!!!!!" << std::endl;
-			break;
-		}
+    for (unsigned int i = 1; i < _Imax; ++i)      // i = 1..Imax-1
+    {
+        for (unsigned int j = 1; j < _Jmax; ++j)  // j = 1..Jmax-1
+        {	
+			// alpha beta and gamma are defined only in internal points
+            unsigned int ii = i - 1;
+            unsigned int jj = j - 1;
+
+            // alpha, beta, gamma
+            double alpha = 1.0/(4.0 * pow2(_deltaEta)) *
+                ( pow2(_x(i, j+1) - _x(i, j-1)) +
+                  pow2(_y(i, j+1) - _y(i, j-1)) ) + eps;
+
+            double beta  = 1.0/(4.0 * _deltaEta * _deltaCsi) *
+                ( (_x(i+1, j) - _x(i-1, j)) * (_x(i, j+1) - _x(i, j-1)) +
+                  (_y(i+1, j) - _y(i-1, j)) * (_y(i, j+1) - _y(i, j-1)) ) + eps;
+
+            double gamma = 1.0/(4.0 * pow2(_deltaCsi)) *
+                ( pow2(_x(i+1, j) - _x(i-1, j)) +
+                  pow2(_y(i+1, j) - _y(i-1, j)) ) + eps;
+
+            double d = 2.0*alpha/pow2(_deltaCsi) + 2.0*gamma/pow2(_deltaEta);
+
+            _alpha(ii, jj) = alpha;
+            _beta (ii, jj) = beta;
+            _gamma(ii, jj) = gamma;
+            _d    (ii, jj) = d;
+
+            _a1(ii, jj) =  alpha / (pow2(_deltaEta) * d);
+            _a2(ii, jj) =  alpha / (pow2(_deltaEta) * d);
+            _a3(ii, jj) = -beta  / (2.0 * _deltaEta * _deltaCsi * d);
+            _a4(ii, jj) =  beta  / (2.0 * _deltaEta * _deltaCsi * d);
+            _a5(ii, jj) =  beta  / (2.0 * _deltaEta * _deltaCsi * d);
+            _a6(ii, jj) = -beta  / (2.0 * _deltaEta * _deltaCsi * d);
+            _a7(ii, jj) =  gamma / (pow2(_deltaCsi) * d);
+            _a8(ii, jj) =  gamma / (pow2(_deltaCsi) * d);
+        }
+    }
+}
+
+void Problem::enforceBC(enum topBottom side)
+{
+    // Pick boundary and interior rows based on which side
+    unsigned int jBoundary = 0;
+    unsigned int jInterior = 1;
+
+    if (side == TOP)
+    {
+        jBoundary = _Jmax;
+        jInterior = _Jmax - 1;
+    }
+    else // BOTTOM
+    {
+        jBoundary = 0;
+        jInterior = 1;
+    }
+
+    // index for tracking closest points to leading/trailing edge
+    unsigned int idxX2 = 0;
+    unsigned int idxX3 = _Imax;
+
+    // Initialize with current distances  TODO: generalize leading and trailing edge
+    double bestDist2 = std::abs(_x(idxX2, jBoundary) - 2.0);
+    double bestDist3 = std::abs(_x(idxX3, jBoundary) - 3.0);
+
+    // Loop over interior lines (horizontal)
+    for (unsigned int i = 1; i < _Imax; ++i)
+    {
+        // slope on interior horizontal line using central difference
+        double dx = _x(i+1, jInterior) - _x(i-1, jInterior);
+        double dy = _y(i+1, jInterior) - _y(i-1, jInterior);
+
+        // Avoid division by zero
+        if (std::abs(dx) < 1e-14)
+            continue;
+
+        double slope = dy / dx;
+
+        // Neumann orthogonality is imposed using boundary and interior
+        double x1 = _x(i, jBoundary);
+        double y1 = _y(i, jBoundary);
+        double x2 = _x(i, jInterior);
+        double y2 = _y(i, jInterior);
+
+        // skip flat walls
+        if (std::abs(slope) > 1e-14)
+        {
+            // Intersection between:
+            //   y = y1 + slope * (x - x1)           (tangent through boundary point)
+            //   y = y2 - (1/slope) * (x - x2)       (normal through interior point)
+            double s  = slope;
+            double is = 1.0 / s;
+
+            double xNew = (x1 * s + x2 * is + y2 - y1) / (s + is);
+
+            _x(i, jBoundary) = xNew;
+        }
+
+        // Copy the new x to snap the surface
+        double xB = _x(i, jBoundary);
+
+        // Apply Dirichlet to determine y on this boundary
+        if (xB <= 2.0 || xB >= 3.0)
+        {
+            if (side == BOTTOM)
+            {
+                _y(i, jBoundary) = 0.0;
+            }
+            else // TOP
+            {
+                _y(i, jBoundary) = _H;
+            }
+        }
+        else
+        {
+            if (side == BOTTOM)
+            {
+                _y(i, jBoundary) = 0.1 * std::sin(M_PI * (xB - 2.0));
+            }
+            else // TOP: bump into domain from y = _H
+            {
+                _y(i, jBoundary) = _H - 0.1 * std::sin(M_PI * (xB - 2.0));
+            }
+        }
+
+        // Distance from leading edge
+        double d2 = std::abs(xB - 2.0);
+        if (d2 < bestDist2)
+        {
+            bestDist2 = d2;
+            idxX2 = i;
+        }
+
+        // Distance from trailing edge
+        double d3 = std::abs(xB - 3.0);
+        if (d3 < bestDist3)
+        {
+            bestDist3 = d3;
+            idxX3 = i;
+        }
+    }
+
+    // Fix boundary points at exact leading / trailing edge
+    _x(idxX2, jBoundary) = 2.0;
+    _x(idxX3, jBoundary) = 3.0;
+
+    if (side == BOTTOM)
+    {
+        _y(idxX2, jBoundary) = 0.0;
+        _y(idxX3, jBoundary) = 0.0;
+    }
+    else // TOP
+    {
+        _y(idxX2, jBoundary) = _H;
+        _y(idxX3, jBoundary) = _H;
+    }
+
+    // Optionally fix left corner exactly (applies to both top and bottom)
+    _x(0, jBoundary) = 0.0;
+    if (side == BOTTOM)
+    {
+        _y(0, jBoundary) = 0.0;
+    }
+    else
+    {
+        _y(0, jBoundary) = _H;
+    }
+}
+void Problem::enforceTopBC()
+{
+    // boundary and interior indexes
+    const unsigned int jBoundary = _Jmax;
+    const unsigned int jInterior = _Jmax - 1;
+
+    // index for tracking closest points to leading/trailing edge
+    unsigned int idxX2 = 0;
+    unsigned int idxX3 = _Imax;
+
+    // Initialize with current distances  TODO: generalize leading and trailing edge
+    double bestDist2 = std::abs(_x(idxX2, jBoundary) - 2.0);
+    double bestDist3 = std::abs(_x(idxX3, jBoundary) - 3.0);
+
+    // Loop over interior lines (horizontal)
+    for (unsigned int i = 1; i < _Imax; ++i)
+    {
+        // slope on interior horizontal line using central difference
+        double dx = _x(i+1, jInterior) - _x(i-1, jInterior);
+        double dy = _y(i+1, jInterior) - _y(i-1, jInterior);
+
+        // Avoid division by zero
+        if (std::abs(dx) < 1e-14)
+            continue;
+
+        double slope = dy / dx;
+
+        // Neumann orthogonality is imposed using boundary and interior
+        // points for index i
+        double x1 = _x(i, jBoundary);
+        double y1 = _y(i, jBoundary);
+        double x2 = _x(i, jInterior);
+        double y2 = _y(i, jInterior);
+
+        // skip flat walls
+        if (std::abs(slope) > 1e-14)
+        {
+            // Intersection between:
+            //   y = y1 + slope * (x - x1)           (tangent through boundary point)
+            //   y = y2 - (1/slope) * (x - x2)       (normal through interior point)
+            double s  = slope;
+            double is = 1.0 / s;
+
+            double xNew = (x1 * s + x2 * is + y2 - y1) / (s + is);
+
+            _x(i, jBoundary) = xNew;
+
+            // y at the boundary comes from Dirichlet below
+        }
+
+        // Copy the new x (for geometry definition)
+        double xB = _x(i, jBoundary);
+
+        // Apply Dirichlet to determine y at the top boundary.
+        // Here I’m using the same bump definition you have at the bottom;
+        // adjust this if your top boundary geometry is different.
+        if (xB <= 2.0 || xB >= 3.0)
+        {
+            _y(i, jBoundary) = 0.0;
+        }
+        else
+        {
+            _y(i, jBoundary) = 0.1 * std::sin(M_PI * (xB - 2.0));
+        }
+
+        // Distance from leading edge
+        double d2 = std::abs(xB - 2.0);
+        if (d2 < bestDist2)
+        {
+            bestDist2 = d2;
+            idxX2 = i;
+        }
+
+        // Distance from trailing edge
+        double d3 = std::abs(xB - 3.0);
+        if (d3 < bestDist3)
+        {
+            bestDist3 = d3;
+            idxX3 = i;
+        }
+    }
+
+    // Fix boundary points at exact leading/trailing edge x-locations
+    _x(idxX2, jBoundary) = 2.0;
+    _y(idxX2, jBoundary) = 0.0;
+
+    _x(idxX3, jBoundary) = 3.0;
+    _y(idxX3, jBoundary) = 0.0;
+
+    // Optionally fix left corner exactly
+    _x(0, jBoundary) = 0.0;
+}
+
+
+
+void Problem::enforceBottomBC()
+{
+    // boundary and interior indexes
+	// for readability
+    const unsigned int jBoundary = 0;
+    const unsigned int jInterior = 1;
+
+    // index for tracking closest
+	// points to leading/trailing edge
+    unsigned int idxX2 = 0;
+    unsigned int idxX3 = _Imax;
+
+    // Initialize with current distances  TODO: generalize leading and trailing edge
+    double bestDist2 = std::abs(_x(idxX2, jBoundary) - 2.0);
+    double bestDist3 = std::abs(_x(idxX3, jBoundary) - 3.0);
+
+    // Loop over interior lines (horizontal) 
+    for (unsigned int i = 1; i < _Imax; ++i)
+    {
+		// slope on interior horizontal line using central difference
+		double dx = _x(i+1, jInterior) - _x(i-1, jInterior);
+        double dy = _y(i+1, jInterior) - _y(i-1, jInterior);
+
+        // Avoid division by zero
+        if (std::abs(dx) < 1e-14)
+            continue;
+
+        double slope = dy / dx;  
+
+        // Neumann orthogonality is imposed using boundary and interior
+		// points for index i 
+        double x1 = _x(i, jBoundary);
+        double y1 = _y(i, jBoundary);
+        double x2 = _x(i, jInterior);
+        double y2 = _y(i, jInterior);
+
+		// skip flat walls
+        if (std::abs(slope) > 1e-14)
+        {
+            // Intersection between:
+            //   y = y1 + slope * (x - x1)           (tangent through boundary point)
+            //   y = y2 - (1/slope) * (x - x2)       (normal through interior point)
+            double s  = slope;
+            double is = 1.0 / s;
+
+            double xNew = (x1 * s + x2 * is + y2 - y1) / (s + is);
+
+            _x(i, jBoundary) = xNew;
+
+            // No need to specify y at the boundary
+			// as the Dirichlet condition will take place
+        }
+		
+		// Copy the new x to snap the surface of the bump
+		double xB = _x(i, jBoundary);
+		
+        // Apply Dirichlet to determine y
+        if (xB <= 2.0 || xB >= 3.0)
+        {
+			_y(i, jBoundary) = 0.0;
+        }
+        else
+        {
+			_y(i, jBoundary) = 0.1 * std::sin(M_PI * (xB - 2.0));
+        }
 		
 
-	}	
-	while (errX > _tol || errY > _tol);
-
-
-	
-	
-}
-
-
-
-
-
-void Problem::updateAlpha(unsigned int i, unsigned int j)
-{
-	//std::cout << "Updating alpha " << std::endl;
-	
-			
-	_alpha = 1.0/4.0/pow2(_deltaEta) *( pow2( _x(i,j + 1) - _x(i,j - 1)) + pow2(_y(i,j + 1) - _y(i,j-1)) );
-			
-	//std::cout << "alpha updated" << std::endl;
-
-}
-
-void Problem::updateBeta(unsigned int i, unsigned int j)
-{
-	//std::cout << "Updating beta " << std::endl;
-	
-			
-	_beta = 1.0/4./_deltaEta/_deltaCsi*( (_x(i+1,j) - _x(i-1,j))*(_x(i,j+1) - _x(i, j -1)) + (_y(i+1,j) - _y(i-1,j))*(_y(i,j+1) - _y(i,j-1)) );	
 		
-	
-	//std::cout << "Updated beta : " << std::endl;
+		// Distance from leading edge
+        double d2 = std::abs(xB - 2.0);
+        if (d2 < bestDist2)
+        {
+            bestDist2 = d2;
+            idxX2 = i;
+        }
+		
+		// Distance from trailing edge
+        double d3 = std::abs(xB - 3.0);
+        if (d3 < bestDist3)
+        {
+            bestDist3 = d3;
+            idxX3 = i;
+        }
+    }
 
+    // Fix boundary point
+    _x(idxX2, jBoundary) = 2.0;
+    _y(idxX2, jBoundary) = 0.0;
+
+    _x(idxX3, jBoundary) = 3.0;
+    _y(idxX3, jBoundary) = 0.0;
+
+    // Optionally fix left corner exactly
+    _x(0, jBoundary) = 0.0;  
 }
 
-
-void Problem::updateGamma(unsigned int i, unsigned int j)
-{
-	//std::cout << "Updating gamma " << std::endl;
-	
-	_gamma = 1.0/4.0/pow2(_deltaCsi) *(pow2( _x(i + 1,j ) - _x(i - 1,j )) + pow2(_y(i + 1,j) - _y(i - 1,j)));	
-	
-	//std::cout << "Updated gamma : " << std::endl;
-}
 
 
 
@@ -263,7 +616,6 @@ void Problem::save()
 {
 	_y.save("y");
 	_x.save("x");
-
 
 	writeVTK(_x, _y, "output.vtk");
 }
